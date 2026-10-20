@@ -6,7 +6,7 @@ dotenv.config();
 
 const embeddings = new OpenAIEmbeddings({
     dimensions: 1536, // Using 1536 for GPT-4 compatibility
-    modelName: 'text-embedding-3-large',
+    model: 'text-embedding-3-large',
 });
 
 export interface ScrapedContent {
@@ -56,7 +56,11 @@ export async function addDocuments(documents: ScrapedContent[]): Promise<void> {
 }
 
 // Search for similar documents
-export async function similaritySearch(query: string, k: number = 4): Promise<any[]> {
+export async function similaritySearch(
+    query: string,
+    k: number = 4,
+    filter?: Record<string, string>
+): Promise<any[]> {
     const vectorStore = await getVectorStore();
-    return await vectorStore.similaritySearch(query, k);
+    return await vectorStore.similaritySearch(query, k, filter);
 }

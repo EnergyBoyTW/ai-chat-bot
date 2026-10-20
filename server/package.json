@@ -1,26 +1,28 @@
 {
-  "name": "server",
+  "name": "ai-chat-bot-server",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.16",
-    "@hono/node-server": "^1.13.7",
+    "@hono/node-server": "^1.19.17",
     "@langchain/community": "^0.3.23",
+    "@langchain/core": "^0.3.80",
     "@langchain/openai": "^0.3.16",
     "@neondatabase/serverless": "^0.10.4",
-    "@types/pg": "^8.11.10",
     "ai": "^4.0.33",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.6.16",
-    "pg": "^8.13.1",
-    "pgshims": "neondatabase/serverless",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.17",
-    "tsx": "^4.7.1"
+    "tsx": "^4.7.1",
+    "typescript": "^5.7.3"
   }
 }

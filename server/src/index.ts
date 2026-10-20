@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { openai } from "@ai-sdk/openai";
 import { serve } from "@hono/node-server";
 import { streamText } from "ai";
@@ -87,27 +88,31 @@ app.get("/chat-history/:domain", async (c) => {
 app.post("/", async (c) => {
   const { messages, domain } = await c.req.json();
 
+  if (!domain || !Array.isArray(messages) || messages.length === 0) {
+    return c.json(
+      { success: false, error: "domain and a non-empty messages array are required" },
+      400
+    );
+  }
+
   const currentDomain = domain;
 
-  console.log("📝 Received messages:", messages);
+  // Earlier turns for this site, so follow-up questions have context
+  const history = (await getChatHistory(currentDomain)).slice(-10);
 
-  // Store chat history
   await storeChatHistory({
     url: currentDomain,
     messages: messages,
   });
 
-  // Get relevant context from vector store
+  // Get relevant context from vector store, limited to the current site
   const userMessage = messages[messages.length - 1].content;
-  const relevantDocs = await similaritySearch(userMessage);
-
-  // Filter documents by current domain
-  const domainFilteredDocs = relevantDocs.filter(
-    (doc: any) => doc.metadata && doc.metadata.domain === currentDomain
-  );
+  const relevantDocs = await similaritySearch(userMessage, 4, {
+    domain: currentDomain,
+  });
 
   // Format context for better readability
-  const formattedContext = domainFilteredDocs
+  const formattedContext = relevantDocs
     .map((doc: any) => `Content from ${doc.metadata.url}:\n${doc.pageContent}`)
     .join("\n\n");
 
@@ -129,11 +134,12 @@ Instructions:
 
 Please provide clear and concise answers based on this context.`,
     },
+    ...history,
     ...messages,
   ];
 
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: openai(process.env.OPENAI_MODEL || "gpt-4o"),
     messages: contextEnhancedMessages,
     onFinish: ({ text, toolResults, toolCalls, finishReason }) => {
       // Store ai response in history
