@@ -162,11 +162,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // Send message to content script with the specific URLs to scrape
       await chrome.tabs.sendMessage(tab.id, { 
         action: 'scrapePatterns',
-        urls: urlPatterns
+        patterns: urlPatterns
       });
 
       // Show success message
-      scrapeStatus.textContent = 'Started scraping selected URLs...';
+      scrapeStatus.textContent = 'Started scraping matching pages...';
       scrapeStatus.style.color = '#22c55e';
     } catch (error) {
       // Show error message
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M19 9L12 16L5 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        Scrape Selected URLs
+        Scrape Matching Pages
       `;
       scrapeStatus.textContent = '';
     }, 3000);
@@ -201,13 +201,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const item = document.createElement('div');
     item.className = 'pattern-item';
     item.innerHTML = `
-      <span>${pattern}</span>
+      <span></span>
       <button class="remove-pattern">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
     `;
+    item.querySelector('span').textContent = pattern;
 
     const removeBtn = item.querySelector('.remove-pattern');
     removeBtn.addEventListener('click', async () => {

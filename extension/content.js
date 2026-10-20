@@ -420,9 +420,9 @@ async function callAPI(endpoint, data, method) {
 
 // Handle chat functionality
 async function sendMessageToAI(message) {
+  const typingIndicator = addTypingIndicator();
   try {
     const domain = getCurrentDomain();
-    console.log('📝 YURURRR:', message);
 
     const response = await callAPI('', {
       messages: [
@@ -433,16 +433,9 @@ async function sendMessageToAI(message) {
     'POST'
   );
 
-    if (!response.ok) {
-      throw new Error('Failed to get response from AI');
-    }
-
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let aiResponse = '';
-
-    // Add typing indicator first
-    const typingIndicator = addTypingIndicator();
     let messageDiv = null;
 
     while (true) {
@@ -452,7 +445,7 @@ async function sendMessageToAI(message) {
         break;
       }
 
-      const chunk = decoder.decode(value);
+      const chunk = decoder.decode(value, { stream: true });
       aiResponse += chunk;
 
       // Create or update the message div
@@ -473,6 +466,8 @@ async function sendMessageToAI(message) {
   } catch (error) {
     console.error('Error sending message to AI:', error);
     addMessage('Sorry, there was an error processing your message. Please try again.', false);
+  } finally {
+    typingIndicator.remove();
   }
 }
 
@@ -482,19 +477,7 @@ sendButton.addEventListener('click', async () => {
     // Show user message
     addMessage(message, true);
     messageInput.value = '';
-
-    // Show typing indicator
-    const typingIndicator = addTypingIndicator();
-
-    try {
-      console.log('📝 Sending message to AI:', message);
-      await sendMessageToAI(message);
-    } finally {
-      // Remove typing indicator if it still exists
-      if (typingIndicator && typingIndicator.parentNode) {
-        typingIndicator.parentNode.removeChild(typingIndicator);
-      }
-    }
+    await sendMessageToAI(message);
   }
 });
 
@@ -504,129 +487,45 @@ messageInput.addEventListener('keypress', (e) => {
   }
 });
 
-// Sitemap and scraping functions
-async function handleScraping(fullSite = false, specificUrls = null) {
+// Scraping
+const scrapeButtonHTML = scrapeButton.innerHTML;
+
+async function handleScraping(mode = 'page', patterns = ['*']) {
+  scrapeButton.disabled = true;
+  scrapeButton.textContent = 'Scraping...';
+
   try {
-    console.log('🚀 Starting scraping process:', { fullSite, hasSpecificUrls: !!specificUrls });
-
-    // Show scraping status
-    const scrapeBtn = document.querySelector('#scrape-btn');
-    if (scrapeBtn) {
-      scrapeBtn.disabled = true;
-      scrapeBtn.innerHTML = `
-        <svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        Scraping...
-      `;
-    }
-
-    let results = [];
-    if (specificUrls) {
-      console.log('🎯 Scraping specific URLs:', specificUrls);
-      results = await scrapeSpecificUrls(specificUrls);
-    } else if (fullSite) {
-      console.log('🌐 Crawling entire site');
-      const { urlPatterns } = await chrome.storage.sync.get(['urlPatterns']);
-      const patterns = urlPatterns || ['*'];
+    let results;
+    if (mode === 'crawl') {
       results = await crawlSite(patterns);
     } else {
-      console.log('📄 Scraping current page only');
-      const content = {
+      results = [{
         url: window.location.href,
         domain: window.location.hostname,
         content: `Title: ${document.title}\nDescription: ${document.querySelector('meta[name="description"]')?.content || ''}\n\nContent:\n${getPageContent()}`
-      };
-      results = [content];
+      }];
     }
 
-    console.log(`📊 Processing ${results.length} results`);
+    if (results.length === 0) {
+      addMessage('No pages matched your URL patterns.', false);
+      return;
+    }
 
-    // Send results to backend
     for (const result of results) {
-      console.log(`🔄 Processing result for ${result.url}`);
-      const chunks = chunkContent(result);
-      console.log(`📦 Created ${chunks.length} chunks for ${result.url}`);
-
-      for (const chunk of chunks) {
-        console.log(`📤 Sending chunk to server, size: ${chunk.content.length}`);
-        const response = await callAPI('store', { documents: [chunk] },
-          'POST'
-        );
-        if (!response.ok) {
-          console.error(`Failed to store chunk for ${result.url}`);
-          continue;
-        }
-        const responseData = await response.json();
-        console.log(`📥 Server response:`, responseData);
+      for (const chunk of chunkContent(result)) {
+        await callAPI('store', { documents: [chunk] }, 'POST');
       }
     }
 
-    // Update button state
-    if (scrapeBtn) {
-      scrapeBtn.disabled = false;
-      scrapeBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19 9L12 16L5 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        Scrape Site
-      `;
-    }
-
-    // Show success message
-    addMessage('✅ Successfully scraped and stored content!', false);
+    const pages = results.length === 1 ? '1 page' : `${results.length} pages`;
+    addMessage(`Scraped ${pages}. Ask me anything about this site.`, false);
   } catch (error) {
-    console.error('❌ Scraping error:', error);
-    addMessage('❌ Error while scraping: ' + error.message, false);
+    console.error('Scraping error:', error);
+    addMessage('Error while scraping: ' + error.message, false);
+  } finally {
+    scrapeButton.disabled = false;
+    scrapeButton.innerHTML = scrapeButtonHTML;
   }
-}
-
-// Handle scraping specific URLs
-async function scrapeSpecificUrls(urls) {
-  const results = [];
-
-  for (const url of urls) {
-    try {
-      console.log(`🔍 Scraping: ${url}`);
-      const response = await fetch(url);
-      const html = await response.text();
-      console.log(`📄 Got HTML content for ${url}, length: ${html.length}`);
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      console.log(`🔄 Parsed HTML for ${url}`);
-
-      const content = {
-        url,
-        domain: new URL(url).hostname,
-        content: `Title: ${doc.title}\nDescription: ${doc.querySelector('meta[name="description"]')?.content || ''}\n\nContent:\n${getPageContent(doc.body)}`
-      };
-
-      console.log(`📦 Created content object for ${url}:`, {
-        url: content.url,
-        domain: content.domain,
-        contentLength: content.content.length
-      });
-
-      // Store the content immediately after scraping
-      const storeResponse = await callAPI('store', { documents: [content] }, 'POST');
-      if (!storeResponse.ok) {
-        console.error(`Failed to store content for ${url}`);
-      }
-
-      results.push(content);
-
-      // Add a small delay to avoid overwhelming the server
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } catch (error) {
-      console.error(`❌ Error scraping ${url}:`, error);
-      addMessage(`❌ Error scraping ${url}: ${error.message}`, false);
-      return
-    }
-  }
-
-  console.log(`✅ Finished scraping ${results.length} URLs`);
-  return results;
 }
 
 // Crawl site with URL pattern matching
@@ -719,92 +618,24 @@ function getCurrentDomain() {
   return window.location.hostname;
 }
 
-// Store scraped content in vector database
-async function storeScrapedContent(pages) {
-  try {
-    const domain = getCurrentDomain();
-    const documents = pages.map(page => ({
-      url: page.url,
-      content: page.content,
-      domain: domain,
-      metadata: {
-        title: page.title
-      }
-    }));
+scrapeButton.addEventListener('click', () => handleScraping('crawl'));
 
-    const response = await callAPI('store', { documents }, "POST");
-
-    if (!response.ok) {
-      throw new Error('Failed to store content');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error storing content:', error);
-    throw error;
-  }
-}
-
-// Example of searching stored content
-async function searchContent(query) {
-  try {
-    const results = await callAPI('search', { query }, "POST");
-    console.log('🔍 Search results:', results);
-    return results;
-  } catch (error) {
-    console.error('Search failed:', error);
-    throw error;
-  }
-}
-
-scrapeButton.addEventListener('click', async () => {
-  const button = scrapeButton;
-  button.textContent = 'Scraping...';
-  button.disabled = true;
-
-  try {
-    await handleScraping(true);
-    button.textContent = 'Scrape Site';
-    button.disabled = false;
-    addMessage(`Scraped site successfully! The content is now available for our conversation.`, false);
-  } catch (error) {
-    console.error('Failed to scrape site:', error);
-    button.textContent = 'Scrape Site';
-    button.disabled = false;
-    addMessage('Sorry, there was an error scraping the site.', false);
-  }
-});
-
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+// Messages from the popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'updatePosition') {
     updateBubblePosition(request.position);
-    sendResponse({ success: true });
   } else if (request.action === 'scrapePage') {
-    handleScraping(false);
-    sendResponse({ success: true });
+    handleScraping('page');
   } else if (request.action === 'scrapeSite') {
-    handleScraping(true);
-    sendResponse({ success: true });
+    handleScraping('crawl');
   } else if (request.action === 'scrapePatterns') {
-    handleScraping(false, request.urls);
-    sendResponse({ success: true });
+    handleScraping('crawl', request.patterns);
   }
-  return true;
+  sendResponse({ success: true });
 });
 
-// Load saved position
-chrome.storage.sync.get(['chatPosition'], function(result) {
-  if (result.chatPosition) {
-    updateBubblePosition(result.chatPosition);
-  }
-});
-
-// Listen for position update messages
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (request.action === 'updatePosition') {
-    updateBubblePosition(request.position);
-  }
+chrome.storage.sync.get(['chatPosition'], (result) => {
+  updateBubblePosition(result.chatPosition || 'bottom-left');
 });
 
 function updateBubblePosition(position) {

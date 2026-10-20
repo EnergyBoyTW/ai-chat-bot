@@ -2,16 +2,17 @@
   "manifest_version": 3,
   "name": "Website Chat Assistant",
   "description": "An AI-powered chat assistant that helps you understand and interact with website content",
-  "version": "1.0",
+  "version": "1.1",
   "permissions": [
     "activeTab",
-    "storage",
-    "scripting"
+    "storage"
   ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "48": "icons/icon48.png"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
   },
   "content_scripts": [
@@ -21,18 +22,13 @@
     }
   ],
   "icons": {
-    "48": "icons/icon48.png"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "host_permissions": [
-    "https://*/*",
-    "http://*/*",
-    "http://localhost:3000/*",
-    "https://your-api-domain.com/*"
+    "http://localhost:8080/*"
   ],
-  "web_accessible_resources": [{
-    "resources": ["chatbot-app/out/*"],
-    "matches": ["<all_urls>"]
-  }],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }
