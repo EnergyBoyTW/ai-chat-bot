@@ -1,98 +1,92 @@
-# Site Assistant Chrome Extension
+# Website Chat Assistant
 
-A Chrome extension that provides an AI-powered chat interface for any website. The assistant can scrape the current site's content and use it to provide contextually relevant answers to your questions.
+A Chrome extension that adds an AI chat bubble to any website and answers questions using that site's own pages. You scrape a page or crawl the whole site, the text is embedded and stored in Postgres, and each answer is grounded in the most relevant chunks from the site you are on.
+
+The extension talks to a small Hono server that runs locally. The server holds your OpenAI key, so it never touches the browser.
+
+## How it works
+
+1. The content script injects a chat bubble and panel into every page.
+2. Scraping reads the current page, or crawls same-origin links (up to 100 pages), strips scripts and styles, and splits the text into chunks of about 8,000 characters.
+3. The server embeds each chunk with `text-embedding-3-large` and stores it in a Neon Postgres table (`scraped_content`) through LangChain's Neon vector store.
+4. When you ask something, the server finds the 4 closest chunks for the current domain, adds the last few turns of that site's chat history, and streams a reply from OpenAI (`gpt-4o` by default).
+5. Chat history is saved per site in a `messages` table and reloads when you open the bubble again.
 
 ## Features
 
-- 🤖 AI-powered chat interface using GPT-4
-- 📝 Real-time website content scraping
-- 🔍 Context-aware responses based on the current website
-- 💨 Fast and lightweight
-- 🎯 Domain-specific responses (only uses content from the current site)
-- 💬 Streaming responses with typing indicators
+- Chat bubble on every site, with streaming replies
+- Scrape the current page, crawl the whole site, or crawl only pages that match your URL patterns (for example `*/docs/*`)
+- Answers only use content from the site you are on
+- Per-site chat history that the model can see, so follow-up questions work
+- Nine bubble positions, saved with `chrome.storage.sync`
 
-## Project Structure
+## Project structure
 
 ```
-extension-chatbot/
-├── extension/          # Chrome Extension
-│   ├── content.js     # Main extension logic
-│   └── manifest.json  # Extension manifest
-└── server/            # Backend Server
+ai-chat-bot/
+├── extension/              Chrome extension (Manifest V3)
+│   ├── manifest.json
+│   ├── content.js          chat UI, scraping and crawling
+│   ├── popup.html          settings popup
+│   ├── popup.js            position, scrape buttons, URL patterns
+│   └── icons/
+└── server/                 Hono API on Node
     ├── src/
-    │   ├── index.ts   # Main server file
-    │   └── lib/       # Server utilities
-    │       └── vectorStore.ts  # Vector storage for embeddings
-    ├── .env           # Environment variables
-    └── package.json   # Server dependencies
+    │   ├── index.ts        routes: chat, store, chat history
+    │   ├── lib/vectorStore.ts
+    │   └── db/             Drizzle schema and queries for chat history
+    ├── drizzle/0000_messages.sql
+    └── .env.example
 ```
 
 ## Setup
 
-### Prerequisites
+You need Node.js 20 or later, an OpenAI API key and a Neon Postgres database.
 
-- Node.js (v20 or later)
-- OpenAI API Key
-- Neon PostgreSQL Database
+### Server
 
-### Server Setup
+```bash
+cd server
+npm install
+cp .env.example .env    # then fill in OPENAI_API_KEY and POSTGRES_URL
+```
 
-1. Navigate to the server directory:
-   ```bash
-   cd server
-   ```
+Create the chat history table once by running `drizzle/0000_messages.sql` in the Neon SQL editor (or with `psql "$POSTGRES_URL" -f drizzle/0000_messages.sql`). The vector table is created automatically on first use.
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+```bash
+npm run dev             # http://localhost:8080
+```
 
-3. Create a `.env` file with your credentials:
-   ```
-   OPENAI_API_KEY=your_openai_api_key
-   POSTGRES_URL=your_neon_postgres_url
-   ```
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | yes | Chat completions and embeddings |
+| `POSTGRES_URL` | yes | Neon connection string for vectors and chat history |
+| `OPENAI_MODEL` | no | Chat model, defaults to `gpt-4o` |
+| `PORT` | no | Defaults to `8080` |
 
-4. Start the server:
-   ```bash
-   npm run dev
-   ```
+Other scripts: `npm start` runs the server without watch mode, and `npm run typecheck` runs the TypeScript compiler.
 
-### Extension Setup
+### Extension
 
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select the `extension` directory
+1. Open `chrome://extensions` and turn on Developer mode.
+2. Click Load unpacked and pick the `extension` folder.
+3. Keep the server running on port 8080. The extension calls `http://localhost:8080`.
 
 ## Usage
 
-1. Click the extension icon in your browser
-2. Click "Scrape Site" to analyze the current webpage
-3. Ask questions about the website's content
-4. Get AI-powered responses based on the scraped content
+1. Open any website and click the chat bubble.
+2. Click Scrape Site in the chat header to crawl the site, or open the extension popup to scrape just the current page or only pages matching your URL patterns.
+3. Ask questions about the site.
 
-## Technical Details
+## API
 
-- Uses OpenAI's GPT-4 for generating responses
-- Implements vector similarity search for relevant context retrieval
-- Stores embeddings in a Neon PostgreSQL database
-- Uses streaming responses for a better user experience
-
-## Environment Variables
-
-### Server
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `POSTGRES_URL`: Your Neon PostgreSQL connection string
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
+| Method | Path | Body or params | Description |
+| --- | --- | --- | --- |
+| GET | `/` | | Health check |
+| POST | `/store` | `{ documents: [{ url, domain, content }] }` | Embed and store page chunks |
+| POST | `/` | `{ domain, messages: [{ role, content }] }` | Streamed chat reply as plain text |
+| GET | `/chat-history/:domain` | | Saved messages for a site |
 
 ## License
 
-MIT License - feel free to use this project for any purpose.
+MIT, see [LICENSE](LICENSE).
